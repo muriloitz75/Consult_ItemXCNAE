@@ -223,48 +223,68 @@ function App() {
             }
         }
 
-        // Filtro por categoria
+        // Filtro por categoria - aplica refinamento adicional aos resultados existentes
         if (categoryFilter === 'servicos') {
-            // Filtro para Serviços: prioriza buscas relacionadas a LIST LC e descrições de serviços
+            // Filtro para Serviços: quando há busca, prioriza resultados relacionados a LIST LC e descrições de serviços
             if (debouncedSearch) {
                 const isNumeric = /^\d+$/.test(debouncedSearch);
                 const hasDot = debouncedSearch.includes('.');
                 
-                // Se for busca numérica, deve ser relacionada a LIST LC
+                // Se for busca numérica, prioriza códigos LIST LC
                 if (isNumeric || hasDot) {
-                    // Mantém apenas resultados que correspondem a códigos LIST LC
+                    // Mantém resultados que correspondem a códigos LIST LC, mas não remove outros
                     const searchLower = debouncedSearch.toLowerCase();
-                    results = results.filter(item => {
+                    const listLCResults = results.filter(item => {
                         const listLC = item["LIST LC"].toString().toLowerCase();
                         return hasDot ? listLC === searchLower : listLC.startsWith(searchLower + '.');
                     });
+                    // Se encontrou resultados específicos de LIST LC, prioriza eles
+                    if (listLCResults.length > 0) {
+                        results = listLCResults;
+                    }
                 } else {
-                    // Para texto, foca na descrição do serviço
-                    results = results.filter(item => {
+                    // Para texto, prioriza descrição do serviço mas mantém outros resultados
+                    const serviceResults = results.filter(item => {
                         const serviceDesc = item["Descrição item da lista da Lei Complementar nº 001/2003 - CTM"].toLowerCase();
-                        return serviceDesc.includes(debouncedSearch);
+                        return serviceDesc.includes(debouncedSearch.toLowerCase());
                     });
+                    // Se encontrou resultados específicos de serviços, prioriza eles
+                    if (serviceResults.length > 0) {
+                        results = serviceResults;
+                    }
                 }
             }
+            // Adiciona log para debug
+            console.log(`FILTRO SERVIÇOS: ${results.length} resultados após filtro`);
         } else if (categoryFilter === 'cnaes') {
-            // Filtro para CNAEs: prioriza buscas relacionadas a códigos CNAE e suas descrições
+            // Filtro para CNAEs: quando há busca, prioriza resultados relacionados a códigos CNAE e suas descrições
             if (debouncedSearch) {
                 const isNumeric = /^\d+$/.test(debouncedSearch);
                 
                 if (isNumeric) {
-                    // Para números, busca por códigos CNAE
-                    results = results.filter(item => {
+                    // Para números, prioriza códigos CNAE
+                    const cnaeResults = results.filter(item => {
                         const cnaeClean = item.CNAE.toString().replace(/\D/g, '');
                         return cnaeClean.startsWith(debouncedSearch);
                     });
+                    // Se encontrou resultados específicos de CNAE, prioriza eles
+                    if (cnaeResults.length > 0) {
+                        results = cnaeResults;
+                    }
                 } else {
-                    // Para texto, foca na descrição do CNAE
-                    results = results.filter(item => {
+                    // Para texto, prioriza descrição do CNAE
+                    const cnaeDescResults = results.filter(item => {
                         const cnaeDesc = item["Descrição do CNAE"].toLowerCase();
-                        return cnaeDesc.includes(debouncedSearch);
+                        return cnaeDesc.includes(debouncedSearch.toLowerCase());
                     });
+                    // Se encontrou resultados específicos de CNAE, prioriza eles
+                    if (cnaeDescResults.length > 0) {
+                        results = cnaeDescResults;
+                    }
                 }
             }
+            // Adiciona log para debug
+            console.log(`FILTRO CNAES: ${results.length} resultados após filtro`);
         }
         // Para 'todos', não aplica filtro adicional (comportamento atual mantido)
 
@@ -273,6 +293,57 @@ function App() {
     }, [data, advancedMode, debouncedSearch, debouncedCode, debouncedService, debouncedCnaeCode, debouncedCnaeDesc, categoryFilter, isLoading]);
 
     const filteredData = useMemo(filterData, [filterData]);
+
+    // Função para calcular alíquota baseada no código LIST LC
+    const calculateAliquota = (listCode) => {
+        // Remove espaços extras, normaliza o código e remove zeros à esquerda
+        const code = listCode.toString().trim().replace(/\s+/g, '').replace(/^0+/, '');
+        
+        // DEBUG: Log para verificar se a função está sendo executada
+        console.log(`ALIQUOTA DEBUG: Código original: '${listCode}' -> Normalizado: '${code}'`);
+        
+        // ORDEM IMPORTANTE: Verificar casos específicos PRIMEIRO
+        
+        // 4%: Subitens específicos 7.02, 7.03, 7.04, 7.05 (ANTES de outras regras)
+        if (code === '7.02' || code === '7.03' || code === '7.04' || code === '7.05') {
+            console.log(`ALIQUOTA DEBUG: Aplicando 4% para código ${code}`);
+            return '4%';
+        }
+        
+        // 4%: Item 14 e seus subitens
+        if (code === '14' || code.startsWith('14.')) {
+            console.log(`ALIQUOTA DEBUG: Aplicando 4% para item 14 - código ${code}`);
+            return '4%';
+        }
+        
+        // 2%: Subitens específicos 4.22 e 4.23 (ANTES da regra geral do item 4)
+        if (code === '4.22' || code === '4.23') {
+            console.log(`ALIQUOTA DEBUG: Aplicando 2% para código ${code}`);
+            return '2%';
+        }
+        
+        // 2%: Item 8 e todos seus subitens
+        if (code === '8' || code.startsWith('8.')) {
+            console.log(`ALIQUOTA DEBUG: Aplicando 2% para item 8 - código ${code}`);
+            return '2%';
+        }
+        
+        // 3%: Subitem específico 10.09
+        if (code === '10.09') {
+            console.log(`ALIQUOTA DEBUG: Aplicando 3% para código ${code}`);
+            return '3%';
+        }
+        
+        // 3%: Item 4 e seus subitens (EXCETO 4.22 e 4.23 já tratados acima)
+        if (code === '4' || code.startsWith('4.')) {
+            console.log(`ALIQUOTA DEBUG: Aplicando 3% para item 4 - código ${code}`);
+            return '3%';
+        }
+        
+        // 5%: Todos os demais itens
+        console.log(`ALIQUOTA DEBUG: Aplicando 5% (padrão) para código ${code}`);
+        return '5%';
+    };
 
     // Exporta resultados como CSV
     const exportToCSV = () => {
@@ -573,11 +644,18 @@ function App() {
                                     {filteredData.slice(0, 100).map((item, index) => (
                                         <div key={index} className={`result-card ${darkMode ? 'dark' : ''} animate-fadeInUp`} style={{animationDelay: `${index * 0.05}s`}}>
                                             <div className="flex justify-between items-center mb-4">
-                                                <span className={`text-xs font-medium px-2 py-1 rounded ${
-                                                    darkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'
-                                                }`}>
-                                                    LIST {item["LIST LC"].replace(/^0+/, '') || item["LIST LC"]}
-                                                </span>
+                                                <div className="flex gap-2">
+                                                    <span className={`text-xs font-medium px-2 py-1 rounded ${
+                                                        darkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'
+                                                    }`}>
+                                                        LIST {item["LIST LC"].replace(/^0+/, '') || item["LIST LC"]}
+                                                    </span>
+                                                    <span className={`text-xs font-bold px-3 py-1 rounded-full border-2 ${
+                                                        darkMode ? 'bg-yellow-900 text-yellow-200 border-yellow-600' : 'bg-yellow-100 text-yellow-800 border-yellow-400'
+                                                    } animate-pulse`}>
+                                                        ISS {calculateAliquota(item["LIST LC"])}
+                                                    </span>
+                                                </div>
                                                 <span className={`text-xs font-medium px-2 py-1 rounded ${
                                                     darkMode ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800'
                                                 }`}>
