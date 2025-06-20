@@ -33,7 +33,7 @@ function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [darkMode, setDarkMode] = useState(false);
     const [advancedMode, setAdvancedMode] = useState(false);
-    const [categoryFilter, setCategoryFilter] = useState('todos');
+
     const [noResults, setNoResults] = useState(false);
     const [history, setHistory] = useState([]);
     const [viewMode, setViewMode] = useState('cards'); // 'cards' ou 'table'
@@ -130,11 +130,27 @@ function App() {
         
         if (advancedMode) {
             if (debouncedCode) {
-                const code = debouncedCode;
+                const code = debouncedCode.toLowerCase();
                 if (code.includes('.')) {
-                    results = results.filter(item => item["LIST LC"].toString().toLowerCase() === code);
+                    // Busca flexível para códigos com ponto (ex: "1.01" encontra "01.01")
+                    results = results.filter(item => {
+                        const itemCode = item["LIST LC"].toString().toLowerCase();
+                        // Busca exata primeiro
+                        if (itemCode === code) return true;
+                        // Se não encontrou, tenta com zeros à esquerda e direita
+                        const parts = code.split('.');
+                        if (parts.length === 2) {
+                            const paddedCode = parts[0].padStart(2, '0') + '.' + parts[1].padEnd(2, '0');
+                            return itemCode === paddedCode;
+                        }
+                        return false;
+                    });
                 } else {
-                    results = results.filter(item => item["LIST LC"].toString().toLowerCase().startsWith(code));
+                    // Para números sem ponto, busca por códigos que começam com esse número
+                    results = results.filter(item => {
+                        const itemCode = item["LIST LC"].toString().toLowerCase();
+                        return itemCode.startsWith(code + '.') || itemCode.startsWith(code.padStart(2, '0') + '.');
+                    });
                 }
             }
 
@@ -223,74 +239,11 @@ function App() {
             }
         }
 
-        // Filtro por categoria - aplica refinamento adicional aos resultados existentes
-        if (categoryFilter === 'servicos') {
-            // Filtro para Serviços: quando há busca, prioriza resultados relacionados a LIST LC e descrições de serviços
-            if (debouncedSearch) {
-                const isNumeric = /^\d+$/.test(debouncedSearch);
-                const hasDot = debouncedSearch.includes('.');
-                
-                // Se for busca numérica, prioriza códigos LIST LC
-                if (isNumeric || hasDot) {
-                    // Mantém resultados que correspondem a códigos LIST LC, mas não remove outros
-                    const searchLower = debouncedSearch.toLowerCase();
-                    const listLCResults = results.filter(item => {
-                        const listLC = item["LIST LC"].toString().toLowerCase();
-                        return hasDot ? listLC === searchLower : listLC.startsWith(searchLower + '.');
-                    });
-                    // Se encontrou resultados específicos de LIST LC, prioriza eles
-                    if (listLCResults.length > 0) {
-                        results = listLCResults;
-                    }
-                } else {
-                    // Para texto, prioriza descrição do serviço mas mantém outros resultados
-                    const serviceResults = results.filter(item => {
-                        const serviceDesc = item["Descrição item da lista da Lei Complementar nº 001/2003 - CTM"].toLowerCase();
-                        return serviceDesc.includes(debouncedSearch.toLowerCase());
-                    });
-                    // Se encontrou resultados específicos de serviços, prioriza eles
-                    if (serviceResults.length > 0) {
-                        results = serviceResults;
-                    }
-                }
-            }
-            // Adiciona log para debug
-            console.log(`FILTRO SERVIÇOS: ${results.length} resultados após filtro`);
-        } else if (categoryFilter === 'cnaes') {
-            // Filtro para CNAEs: quando há busca, prioriza resultados relacionados a códigos CNAE e suas descrições
-            if (debouncedSearch) {
-                const isNumeric = /^\d+$/.test(debouncedSearch);
-                
-                if (isNumeric) {
-                    // Para números, prioriza códigos CNAE
-                    const cnaeResults = results.filter(item => {
-                        const cnaeClean = item.CNAE.toString().replace(/\D/g, '');
-                        return cnaeClean.startsWith(debouncedSearch);
-                    });
-                    // Se encontrou resultados específicos de CNAE, prioriza eles
-                    if (cnaeResults.length > 0) {
-                        results = cnaeResults;
-                    }
-                } else {
-                    // Para texto, prioriza descrição do CNAE
-                    const cnaeDescResults = results.filter(item => {
-                        const cnaeDesc = item["Descrição do CNAE"].toLowerCase();
-                        return cnaeDesc.includes(debouncedSearch.toLowerCase());
-                    });
-                    // Se encontrou resultados específicos de CNAE, prioriza eles
-                    if (cnaeDescResults.length > 0) {
-                        results = cnaeDescResults;
-                    }
-                }
-            }
-            // Adiciona log para debug
-            console.log(`FILTRO CNAES: ${results.length} resultados após filtro`);
-        }
-        // Para 'todos', não aplica filtro adicional (comportamento atual mantido)
+        // Filtro por categoria removido - agora sempre mostra todos os resultados
 
         setNoResults(results.length === 0 && !isLoading);
         return results;
-    }, [data, advancedMode, debouncedSearch, debouncedCode, debouncedService, debouncedCnaeCode, debouncedCnaeDesc, categoryFilter, isLoading]);
+    }, [data, advancedMode, debouncedSearch, debouncedCode, debouncedService, debouncedCnaeCode, debouncedCnaeDesc, isLoading]);
 
     const filteredData = useMemo(filterData, [filterData]);
 
@@ -399,39 +352,7 @@ function App() {
                     </button>
                 </div>
 
-                {/* Seletor de Categoria */}
-                <div className="mb-4 flex justify-center space-x-2">
-                    <button
-                        onClick={() => setCategoryFilter('todos')}
-                        className={`px-4 py-2 rounded-md ${
-                            categoryFilter === 'todos'
-                                ? 'bg-blue-600 text-white'
-                                : `${darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow'}`
-                        }`}
-                    >
-                        Todos
-                    </button>
-                    <button
-                        onClick={() => setCategoryFilter('servicos')}
-                        className={`px-4 py-2 rounded-md ${
-                            categoryFilter === 'servicos'
-                                ? 'bg-blue-600 text-white'
-                                : `${darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow'}`
-                        }`}
-                    >
-                        Serviços
-                    </button>
-                    <button
-                        onClick={() => setCategoryFilter('cnaes')}
-                        className={`px-4 py-2 rounded-md ${
-                            categoryFilter === 'cnaes'
-                                ? 'bg-blue-600 text-white'
-                                : `${darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-800 shadow'}`
-                        }`}
-                    >
-                        CNAEs
-                    </button>
-                </div>
+
 
                 {/* Botão Limpar Filtros */}
                 <div className="mb-4 flex justify-center">
@@ -442,7 +363,6 @@ function App() {
                             setSearchService('');
                             setSearchCnaeCode('');
                             setSearchCnaeDesc('');
-                            setCategoryFilter('todos');
                             setAdvancedMode(false);
                             setHistory([]);
                             localStorage.removeItem('searchHistory');
@@ -627,7 +547,6 @@ function App() {
                                     setSearchService('');
                                     setSearchCnaeCode('');
                                     setSearchCnaeDesc('');
-                                    setCategoryFilter('todos');
                                     setAdvancedMode(false);
                                     setHistory([]);
                                     localStorage.removeItem('searchHistory');
